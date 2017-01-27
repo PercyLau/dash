@@ -30,62 +30,74 @@
 #include "ns3/dash-module.h"
 
 using namespace ns3;
-NS_LOG_COMPONENT_DEFINE("Dash-Wifi");
+NS_LOG_COMPONENT_DEFINE("Dash-Adhoc");
 
 int
 main(int argc, char *argv[])
 {
-  uint32_t nWifi = 4;
-  uint32_t maxBytes = 0;
-  uint32_t users = 3;
-  uint32_t bulkNo = 0;
-  double target_dt = 35.0;
-  double stopTime = 100.0;
-  std::string protocol = "ns3::SftmClient";
-  std::string window = "2s";
+  // disable fragmentation
+  Config::SetDefault("ns3::WifiRemoteStationManager::FragmentationThreshold", StringValue("2200"));
+  Config::SetDefault("ns3::WifiRemoteStationManager::RtsCtsThreshold", StringValue("2200"));
+  Config::SetDefault("ns3::WifiRemoteStationManager::NonUnicastMode",
+                     StringValue("OfdmRate24Mbps"));
 
-  /*LogComponentEnable ("DashServer", LOG_LEVEL_ALL);
-   LogComponentEnable ("DashClient", LOG_LEVEL_ALL);*/
-
-  //
-  // Allow the user to override any of the defaults at
-  // run-time, via command-line arguments
-  //
-  if (bulkNo + users > nWifi + 1)
-    {
-      std::cerr << "you need more stations" << std::endl;
-      return -1;
-    }
-
-  std::cout << "nWifi= " << nWifi << std::endl;
-
-  LogComponentEnable("UdpClient", LOG_LEVEL_INFO);
-  LogComponentEnable("UdpServer", LOG_LEVEL_INFO);
-
-  NodeContainer nodes;
-  nodes.Create(nWifi);
-
-  YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
-  YansWifiPhyHelper phy = YansWifiPhyHelper::Default();
-  phy.SetChannel(channel.Create());
-
-  //WifiHelper wifi = WifiHelper::Default();//deprecated
+  //////////////////////
+  //////////////////////
+  //////////////////////
   WifiHelper wifi = WifiHelper();
-  wifi.SetRemoteStationManager("ns3::AarfWifiManager");
-  NqosWifiMacHelper mac = NqosWifiMacHelper::Default();
+  wifi.SetRemoteStationManager ("ns3::AarfWifiManager");
+  wifi.SetStandard(WIFI_PHY_STANDARD_80211a);
+  //wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager", "DataMode", StringValue("OfdmRate24Mbps"));
 
-  NetDeviceContainer wifiNetDevices;
-  wifiNetDevices = wifi.Install(phy, mac, nodes);
+  YansWifiChannelHelper wifiChannel;// = YansWifiChannelHelper::Default ();
+  wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel.AddPropagationLoss("ns3::ThreeLogDistancePropagationLossModel");
+  wifiChannel.AddPropagationLoss("ns3::NakagamiPropagationLossModel");
 
-Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
+  // YansWifiPhy wifiPhy = YansWifiPhy::Default();
+  YansWifiPhyHelper wifiPhyHelper = YansWifiPhyHelper::Default();
+  wifiPhyHelper.SetChannel(wifiChannel.Create());
+
+  NqosWifiMacHelper wifiMacHelper = NqosWifiMacHelper::Default();
+  wifiMacHelper.SetType("ns3::AdhocWifiMac");
+
+  Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
   randomizer->SetAttribute("Min", DoubleValue(1)); // 
   randomizer->SetAttribute("Max", DoubleValue(50));
 
   MobilityHelper mobility;
   mobility.SetPositionAllocator("ns3::RandomBoxPositionAllocator", "X", PointerValue(randomizer),
                                 "Y", PointerValue(randomizer), "Z", PointerValue(randomizer));
+  //mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+  //mobility.SetPositionAllocator ("ns3::GridPositionAllocator",
+  //                               "MinX", DoubleValue (0.0),
+  //                               "MinY", DoubleValue (50.0),
+  //                               "DeltaX", DoubleValue (10.0),
+  //                               "DeltaY", DoubleValue (10.0),
+  //                               "GridWidth", UintegerValue (10),
+  //                              "LayoutType", StringValue ("RowFirst"));
+
+
+  std::string protocol = "ns3::DashClient";
+  std::string window = "2s";
+  double target_dt = 35.0;
+  double stopTime = 610;
+
+
+  LogComponentEnable("UdpClient", LOG_LEVEL_INFO);
+  LogComponentEnable("UdpServer", LOG_LEVEL_INFO);
+
+  NodeContainer nodes;
+  nodes.Create(4);
+
+   ////////////////
+  // 1. Install Wifi
+  NetDeviceContainer wifiNetDevices = wifi.Install(wifiPhyHelper, wifiMacHelper, nodes);
+
+  // 2. Install Mobility model
   mobility.Install(nodes);
 
+  // 3. Install IP stack
   InternetStackHelper stack;
   stack.Install(nodes);
   Ipv4AddressHelper address;
@@ -97,7 +109,7 @@ Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
   std::stringstream ss(protocol);
   std::string proto;
   uint32_t protoNum = 0; // The number of protocols (algorithms)
-  while (std::getline(ss, proto, ',') && protoNum++ < users)
+  while (std::getline(ss, proto, ',') && protoNum++ < 3)
     {
       protocols.push_back(proto);
     }
@@ -107,18 +119,17 @@ Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
   std::vector<DashClientHelper> clients;
   std::vector<ApplicationContainer> clientApps;
 
-  for (uint32_t user = 0; user < users; user++)
+  for (uint32_t user = 0; user < 3; user++)
     {
       DashClientHelper client("ns3::TcpSocketFactory",
           InetSocketAddress(interfaces.GetAddress(0), port),protocols[user % protoNum]);
       //client.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
-      client.SetAttribute("VideoId", UintegerValue(user + 1)); // VideoId should be positive
+      client.SetAttribute("VideoId", UintegerValue(1)); // multicast-iike
       client.SetAttribute("TargetDt", TimeValue(Seconds(target_dt)));
       client.SetAttribute("window", TimeValue(Time(window)));
-      ApplicationContainer clientApp = client.Install(nodes.Get(user + 1)); // Node 0 is the server
+      ApplicationContainer clientApp = client.Install(nodes.Get(user+1)); // Node 3 is the server
       clientApp.Start(Seconds(0.25));
       clientApp.Stop(Seconds(stopTime));
-
       clients.push_back(client);
       clientApps.push_back(clientApp);
 
@@ -130,26 +141,9 @@ Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
   serverApps.Start(Seconds(0.0));
   serverApps.Stop(Seconds(stopTime + 5.0));
 
-//   for (uint32_t bulk = 0; bulk < bulkNo; bulk++)
-//     {
-//       BulkSendHelper source("ns3::TcpSocketFactory",
-//           InetSocketAddress(interfaces.GetAddress(1 + users + bulk), port));
 
-//       source.SetAttribute("MaxBytes", UintegerValue(maxBytes));
-//       ApplicationContainer sourceApps = source.Install(nodes.Get(0));
-//       sourceApps.Start(Seconds(0.0));
-//       sourceApps.Stop(Seconds(stopTime));
-
-//       PacketSinkHelper sink("ns3::TcpSocketFactory",
-//           InetSocketAddress(Ipv4Address::GetAny(), port));
-//       ApplicationContainer sinkApps = sink.Install(
-//           nodes.Get(1 + users + bulk));
-//       sinkApps.Start(Seconds(0.0));
-//       sinkApps.Stop(Seconds(stopTime));
-
-//     }
   /*    UdpServerHelper server (22000);
-   ApplicationContainer serverApps = server.Install(nodes.Get(1));
+   ApplicationContainer serverApps = server.Install(wifiStaNodes.Get(1));
    serverApps.Start(Seconds(1.0));
    serverApps.Stop(Seconds(10.0));
 
@@ -157,7 +151,7 @@ Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
    client.SetAttribute("Interval", TimeValue(Seconds(0.01)));
    client.SetAttribute("PacketSize", UintegerValue(512));
    client.SetAttribute("MaxPackets", UintegerValue (15000));
-   ApplicationContainer clientApps = client.Install(nodes.Get(4));
+   ApplicationContainer clientApps = client.Install(wifiStaNodes.Get(4));
    clientApps.Start(Seconds(1.5));
    clientApps.Stop(Seconds(9.5));*/
 
@@ -167,7 +161,7 @@ Ptr<UniformRandomVariable> randomizer = CreateObject<UniformRandomVariable>();
   Simulator::Destroy();
 
   uint32_t k;
-  for (k = 0; k < users; k++)
+  for (k = 0; k < 3; k++)
     {
       Ptr<DashClient> app = DynamicCast<DashClient>(clientApps[k].Get(0));
       std::cout << protocols[k % protoNum] << "-Node: " << k;

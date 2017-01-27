@@ -28,14 +28,10 @@ NS_LOG_COMPONENT_DEFINE("HTTPHeader");
 
 namespace ns3
 {
+  NS_OBJECT_ENSURE_REGISTERED (HTTPHeader);
 
-  NS_OBJECT_ENSURE_REGISTERED (HTTPHeader)
-  ;
-
-  HTTPHeader::HTTPHeader() :
-      m_seq(0), m_ts(Simulator::Now().GetTimeStep()), m_message_type(
-          HTTP_REQUEST), m_video_id(0), m_resolution(0), m_segment_id(0)
-
+  HTTPHeader::HTTPHeader():
+      m_seq(0), m_ts(Simulator::Now().GetTimeStep()), m_message_type(HTTP_REQUEST), m_video_id(0), m_resolution(0), m_segment_id(0)
   {
     NS_LOG_FUNCTION(this);
   }
@@ -46,6 +42,7 @@ namespace ns3
     NS_LOG_FUNCTION(this << seq);
     m_seq = seq;
   }
+
   uint32_t
   HTTPHeader::GetSeq(void) const
   {

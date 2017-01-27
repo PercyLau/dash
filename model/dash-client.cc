@@ -66,7 +66,7 @@ namespace ns3
           0), m_socket(0), m_connected(false), m_totBytes(0), m_startedReceiving(
           Seconds(0)), m_sumDt(Seconds(0)), m_lastDt(Seconds(-1)), m_id(
           m_countObjs++), m_requestTime("0s"), m_segment_bytes(0), m_bitRate(
-          45000), m_window(Seconds(10)), m_segmentFetchTime(Seconds(0))
+          50000), m_window(Seconds(10)), m_segmentFetchTime(Seconds(0))
   {
     NS_LOG_FUNCTION(this);
     m_parser.SetApp(this); // So the parser knows where to send the received messages
@@ -300,8 +300,8 @@ namespace ns3
           }
 
         std::cout << Simulator::Now().GetSeconds() << " Node: " << m_id
-            << " newBitRate: " << m_bitRate << " oldBitRate: " << old
-            << " estBitRate: " << GetBitRateEstimate() << " interTime: "
+            << " newQuality: " << m_bitRate/1000<<"Kbit" << " oldQuality: " << old/1000<<"Kbit"
+            << " estBitRate: " << GetBitRateEstimate()/1000<<"Kbps" << " interruption Time: "
             << m_player.m_interruption_time.GetSeconds() << " T: "
             << currDt.GetSeconds() << " dT: "
             << (m_lastDt >= 0 ? (currDt - m_lastDt).GetSeconds() : 0)
@@ -321,24 +321,48 @@ namespace ns3
   }
 
   void
-  DashClient::CalcNextSegment(uint32_t currRate, uint32_t & nextRate,
-      Time & delay)
-  {
-    nextRate = currRate;
-    delay = Seconds(0);
-  }
+  DashClient::CalcNextSegment(uint32_t currRate, uint32_t & nextRate, Time & delay){
+      double msd = MPEG_FRAMES_PER_SEGMENT * MPEG_TIME_BETWEEN_FRAMES / 1000.0;
+      uint32_t rates[] =
+      { 50000, 100000, 150000, 200000, 250000, 300000, 400000, 500000, 600000,
+          700000, 900000, 1200000, 1500000, 2000000, 2500000, 3000000, 4000000,
+          5000000, 6000000, 8000000 };
+          //if (GetBufferEstimate()>0)
+          double highest_rate = 0.0;
+          int it = 0;
 
+          for (it = 0; it != 18; it++){
+            if (rates[it]<=GetBitRateEstimate()){
+              if(rates[it]>=highest_rate){
+                nextRate = rates[it];
+                highest_rate = rates[it];
+              }
+            }
+          }
+          double bmt_min = 0;
+          double bmt_c = GetBufferEstimate();
+          double b_max = rates[19];
+          double b_min = rates[0];
+          double t_id = bmt_c - bmt_min - msd * b_max / b_min;
+          if (t_id > 0) // Delay
+          {
+            delay = Seconds(t_id);
+          }
+        else
+          {
+            delay = Seconds(0);
+          }
+  }
   void
   DashClient::GetStats()
   {
     std::cout << " InterruptionTime: "
         << m_player.m_interruption_time.GetSeconds() << " interruptions: "
-        << m_player.m_interrruptions << " avgRate: "
+        << m_player.m_interrruptions << "avgRate:"
         << (1.0 * m_player.m_totalRate) / m_player.m_framesPlayed
-        << " minRate: " << m_player.m_minRate << " AvgDt: "
-        << m_sumDt.GetSeconds() / m_player.m_framesPlayed << " changes: "
+        << "minRate:" << m_player.m_minRate << "AvgDt:"
+        << m_sumDt.GetSeconds() / m_player.m_framesPlayed << "changes:"
         << m_rateChanges << std::endl;
-
   }
 
   void
@@ -373,7 +397,6 @@ namespace ns3
   DashClient::GetBufferDifferential()
   {
     std::map<Time, Time>::iterator it = m_bufferState.end();
-
     if (it == m_bufferState.begin())
       {
         // Empty buffer

@@ -41,14 +41,15 @@ int
 main(int argc, char *argv[])
 {
   bool tracing = false;
-  uint32_t maxBytes = 100;
+  uint32_t maxBytes = 1500;
   uint32_t users = 1;
   double target_dt = 35.0;
-  double stopTime = 100.0;
-  std::string linkRate = "500Kbps";
-  std::string delay = "5ms";
+  double stopTime = 200.0;
+  Config::SetDefault("ns3::PointToPointNetDevice::DataRate", StringValue("200kbps"));
+  Config::SetDefault("ns3::PointToPointChannel::Delay", StringValue("10ms"));
+  Config::SetDefault("ns3::DropTailQueue::MaxPackets", StringValue("20"));
   std::string protocol = "ns3::DashClient";
-  std::string window = "10s";
+  std::string window = "2s";
 
   /*  LogComponentEnable("MpegPlayer", LOG_LEVEL_ALL);*/
   /*LogComponentEnable ("DashServer", LOG_LEVEL_ALL);
@@ -60,23 +61,13 @@ main(int argc, char *argv[])
 //
   CommandLine cmd;
   cmd.AddValue("tracing", "Flag to enable/disable tracing", tracing);
-  cmd.AddValue("maxBytes", "Total number of bytes for application to send",
-      maxBytes);
   cmd.AddValue("users", "The number of concurrent videos", users);
   cmd.AddValue("targetDt",
-      "The target time difference between receiving and playing a frame.",
-      target_dt);
+      "The target time difference between receiving and playing a frame.", target_dt);
   cmd.AddValue("stopTime",
       "The time when the clients will stop requesting segments", stopTime);
-  cmd.AddValue("linkRate",
-      "The bitrate of the link connecting the clients to the server (e.g. 500kbps)",
-      linkRate);
-  cmd.AddValue("delay",
-      "The delay of the link connecting the clients to the server (e.g. 5ms)",
-      delay);
   cmd.AddValue("protocol",
-      "The adaptation protocol. It can be 'ns3::DashClient' or 'ns3::OsmpClient (for now).",
-      protocol);
+      "The adaptation protocol. It can be 'ns3::DashClient' or 'ns3::OsmpClient (for now).", protocol);
   cmd.AddValue("window",
       "The window for measuring the average throughput (Time).", window);
   cmd.Parse(argc, argv);
@@ -94,8 +85,6 @@ main(int argc, char *argv[])
 // Explicitly create the point-to-point link required by the topology (shown above).
 //
   PointToPointHelper pointToPoint;
-  pointToPoint.SetDeviceAttribute("DataRate", StringValue(linkRate));
-  pointToPoint.SetChannelAttribute("Delay", StringValue(delay));
   NetDeviceContainer devices;
   devices = pointToPoint.Install(nodes);
 
@@ -130,8 +119,7 @@ main(int argc, char *argv[])
 
   for (uint32_t user = 0; user < users; user++)
     {
-      DashClientHelper client("ns3::TcpSocketFactory",
-          InetSocketAddress(i.GetAddress(1), port), protocols[user % protoNum]);
+      DashClientHelper client("ns3::TcpSocketFactory", InetSocketAddress(i.GetAddress(1), port), protocols[user % protoNum]);
       //client.SetAttribute ("MaxBytes", UintegerValue (maxBytes));
       client.SetAttribute("VideoId", UintegerValue(user + 1)); // VideoId should positive
       client.SetAttribute("TargetDt", TimeValue(Seconds(target_dt)));
@@ -139,14 +127,11 @@ main(int argc, char *argv[])
       ApplicationContainer clientApp = client.Install(nodes.Get(0));
       clientApp.Start(Seconds(0.25));
       clientApp.Stop(Seconds(stopTime));
-
       clients.push_back(client);
       clientApps.push_back(clientApp);
-
     }
 
-  DashServerHelper server("ns3::TcpSocketFactory",
-      InetSocketAddress(Ipv4Address::GetAny(), port));
+  DashServerHelper server("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
   ApplicationContainer serverApps = server.Install(nodes.Get(1));
   serverApps.Start(Seconds(0.0));
   serverApps.Stop(Seconds(stopTime + 5.0));
@@ -154,8 +139,7 @@ main(int argc, char *argv[])
 //
 // Set up tracing if enabled
 //
-  if (tracing)
-    {
+  if (tracing){
       AsciiTraceHelper ascii;
       pointToPoint.EnableAsciiAll(ascii.CreateFileStream("dash-send.tr"));
       pointToPoint.EnablePcapAll("dash-send", false);

@@ -219,10 +219,8 @@ namespace ns3
         if (iter->second.size())
           {
             Ptr<Packet> frame = iter->second.front().Copy();
-
             frame->RemoveHeader(mpegHeader);
             frame->RemoveHeader(httpHeader);
-
             NS_LOG_INFO(
                 "VidId: " << httpHeader.GetVideoId() << " rxAv= " << iter->first->GetRxAvailable() << " queue= "<< iter->second.size() << " res= " << httpHeader.GetResolution());
           }
@@ -250,9 +248,98 @@ namespace ns3
 
   void
   DashServer::SendSegment(uint32_t video_id, uint32_t resolution,
-      uint32_t segment_id, Ptr<Socket> socket)
-  {
-    int avg_packetsize = resolution / (50 * 8);
+      uint32_t segment_id, Ptr<Socket> socket)//OON todo here
+  { 
+    // the below parameters are for BigBuckBunny
+    // resolution is bitrate
+    int avg_packetsize;
+    switch (resolution){
+      case 100000:{
+        avg_packetsize = 236;
+        break;
+      }
+      case 1200000:{
+        avg_packetsize = 2535;
+        break;
+      }
+      case 1500000:{
+        avg_packetsize = 3060;
+        break;
+      }
+      case 150000:{
+        avg_packetsize = 340;
+        break;
+      }
+      case 2000000:{
+        avg_packetsize = 3786;
+        break;
+      }
+      case 200000:{
+        avg_packetsize = 454;
+        break;
+      }
+      case 2500000:{
+        avg_packetsize = 5215;
+        break;
+      }
+      case 250000:{
+        avg_packetsize = 559;
+        break;
+      }
+      case 3000000:{
+        avg_packetsize = 6069;
+        break;
+      }
+      case 300000:{
+        avg_packetsize = 659;
+        break;
+      }
+      case 4000000:{
+        avg_packetsize = 7516;
+        break;
+      }
+      case 400000:{
+        avg_packetsize = 834;
+        break;
+      }
+      case 5000000:{
+        avg_packetsize = 8608;
+        break;
+      }
+      case 500000:{
+        avg_packetsize = 986;
+        break;
+      }
+      case 50000:{
+        avg_packetsize = 127;
+        break;
+      }
+      case 6000000:{
+        avg_packetsize = 9371;
+        break;
+      }
+      case 600000:{
+        avg_packetsize = 1291;
+        break;
+      }
+      case 700000:{
+        avg_packetsize = 1471;
+        break;
+      }
+      case 8000000:{
+        avg_packetsize = 10304;
+        break;
+      }
+      case 900000:{
+        avg_packetsize = 1946;
+        break;
+      }
+      default:{
+      avg_packetsize = resolution/(50*8);
+      break;
+      }
+    }
+    //int avg_packetsize = resolution / (53 * 8); // hueristic formula
 
     HTTPHeader http_header_tmp;
     MPEGHeader mpeg_header_tmp;
@@ -261,21 +348,19 @@ namespace ns3
 
     frame_size_gen->SetAttribute ("Min", DoubleValue (0));
     frame_size_gen->SetAttribute ("Max", DoubleValue (
-        std::max(
-            std::min(2 * avg_packetsize, MPEG_MAX_MESSAGE)
-                - (int) (mpeg_header_tmp.GetSerializedSize()
-                    + http_header_tmp.GetSerializedSize()), 1)));
+         std::max(
+             std::min(2 * avg_packetsize, MPEG_MAX_MESSAGE)
+                 - (int) (mpeg_header_tmp.GetSerializedSize()
+                     + http_header_tmp.GetSerializedSize()), 1)));
 
-    for (uint32_t f_id = 0; f_id < MPEG_FRAMES_PER_SEGMENT; f_id++)
+    for (uint32_t f_id = 0; f_id < MPEG_FRAMES_PER_SEGMENT; f_id++)//OON todo here
       {
         uint32_t frame_size = (unsigned) frame_size_gen->GetValue();
-
         HTTPHeader http_header;
         http_header.SetMessageType(HTTP_RESPONSE);
         http_header.SetVideoId(video_id);
         http_header.SetResolution(resolution);
         http_header.SetSegmentId(segment_id);
-
         MPEGHeader mpeg_header;
         mpeg_header.SetFrameId(f_id);
         mpeg_header.SetPlaybackTime(
@@ -284,13 +369,11 @@ namespace ns3
                     * MPEG_TIME_BETWEEN_FRAMES)); //50 fps
         mpeg_header.SetType('B');
         mpeg_header.SetSize(frame_size);
-
         Ptr<Packet> frame = Create<Packet>(frame_size);
         frame->AddHeader(http_header);
         frame->AddHeader(mpeg_header);
         NS_LOG_INFO(
             "SENDING PACKET " << f_id << " " << frame->GetSize() << " res=" << http_header.GetResolution() << " size=" << mpeg_header.GetSize() << " avg=" << avg_packetsize);
-
         m_queues[socket].push(*frame);
       }
     DataSend(socket, 0);
